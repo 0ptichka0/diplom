@@ -1,6 +1,7 @@
 from psycopg2 import OperationalError
 import psycopg2
 import json
+import datetime
 
 from aiogram import types
 from settings import connection
@@ -273,7 +274,113 @@ async def Request_for_requests(message: types.Message, page, type_r):
             return False
         return result
     else:
+        insert_query = (f'SELECT * FROM public."Request_occupy" where id = (select min(id) from public."Request_occupy" where status=0 and id > {page});')
+        cursor = connection.cursor()
+        try:
+            cursor.execute(insert_query)
+            result = cursor.fetchall()
+        except:
+            return False
+        return result
+
+async def Update_request(message: types.Message, type_r, id, mess):
+    if type_r == 1:
+        update_query = f'''UPDATE "Request_write" set "admin_mess_id"= {mess}, "admin_id"= {message.chat.id} where "id"={id};'''
+        cursor = connection.cursor()
+        try:
+            cursor.execute(update_query)
+            return True
+        except:
+            return False
+    else:
+        pass
         """
-        Дописать для таблицы Request_occupy
+        update_query = f'''UPDATE "Request_write" set "admin_mess_id"= {mess}, "admin_id"= {message.chat.id} where "id"={id};'''
+        cursor = connection.cursor()
+        try:
+            cursor.execute(update_query)
+            return True
+        except:
+            return False
         """
+
+async def Check_user_id_ans_request_write(message: types.Message, id):
+    insert_query = (f'SELECT user_id, user_mess_id FROM public."Request_write" where id = {id};')
+    cursor = connection.cursor()
+    try:
+        cursor.execute(insert_query)
+        result = cursor.fetchall()
+    except:
         return False
+    return result[0]
+
+
+async def Check_user_id_ans_Request_occupy(message: types.Message, id):
+    insert_query = (f'SELECT user_id FROM public."Request_occupy" where id = {id};')
+    cursor = connection.cursor()
+    try:
+        cursor.execute(insert_query)
+        result = cursor.fetchall()
+    except:
+        return False
+    return result[0]
+
+
+async def Check_all_request_occupy(message: types.Message):
+    insert_query = (f'select * from public."Request_occupy" where booking_time::date = (select CURRENT_DATE);')
+    cursor = connection.cursor()
+    try:
+        cursor.execute(insert_query)
+        result = cursor.fetchall()
+    except:
+        return False
+    return result
+
+
+async def New_booking(message: types.Message, callback_data):
+    insert_query = (
+        f'INSERT INTO public."Request_occupy" ("booking_time", "booking_room", "status", "user_id", "booking_time_end") VALUES (%s, %s, %s, %s, %s);')
+    cursor = connection.cursor()
+    try:
+        cursor.execute(insert_query, [
+            datetime.datetime(
+                datetime.datetime.now().year, datetime.datetime.now().month, datetime.datetime.now().day,
+                int(callback_data["time"])
+            ),
+            callback_data["room"],
+            0,
+            message.chat.id,
+            1
+        ])
+        """
+        Отправить сообщение для всех работающих Watch
+        """
+        return True
+    except OperationalError as e:
+        print(f"The error '{e}' occurred")
+        return False
+
+async def Update_request_reply_booking(message: types.Message, callback_data):
+    select_query = (f'select * from public."Request_occupy" where id = {callback_data["page"]};')
+    cursor = connection.cursor()
+    try:
+        cursor.execute(select_query)
+        result = cursor.fetchall()
+    except:
+        return False
+    if callback_data["action"] == "yes":
+        update_query = f'''UPDATE "Request_occupy" set "status"= 1 where "id"= {callback_data["page"]};'''
+        cursor = connection.cursor()
+        try:
+            cursor.execute(update_query)
+            return result
+        except:
+            return False
+    else:
+        del_query = f'''DELETE FROM public."Request_occupy" WHERE id = {callback_data["page"]};;'''
+        cursor = connection.cursor()
+        try:
+            cursor.execute(del_query)
+            return result
+        except:
+            return False

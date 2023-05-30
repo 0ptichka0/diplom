@@ -6,6 +6,7 @@ import json
 import asyncio
 import typing
 import psycopg2
+import datetime
 
 from aiogram.bot import api
 from aiogram import Bot, Dispatcher, executor, types
@@ -149,7 +150,7 @@ async def Menu(message: types.Message):
 
     if user == "user":
         bt1 = InlineKeyboardButton("Репорт", callback_data="Report")
-        bt2 = InlineKeyboardButton("Доска потеряшек", callback_data="desk")
+        bt2 = InlineKeyboardButton("Доска объявлений", callback_data="bt2")
         bt3 = InlineKeyboardButton("Занять комнату", callback_data="booking")
         bt4 = InlineKeyboardButton("Написать вахте", callback_data="mess")
         bt5 = InlineKeyboardButton("О боте", callback_data="info")
@@ -168,7 +169,7 @@ async def Menu(message: types.Message):
             keyboard_menu_watch = InlineKeyboardMarkup().row(button_status,
                 InlineKeyboardButton("Верификация", callback_data="vereficateon_unreg")).row(
                 InlineKeyboardButton("Запросы", callback_data="requests"),
-                InlineKeyboardButton("Доска потеряшек", callback_data="btw3")).row(
+                InlineKeyboardButton("Доска объявлений", callback_data="btw3")).row(
                 InlineKeyboardButton("Написать объявление", callback_data="btw4"))
             status = "На работе"
         else:
@@ -191,6 +192,25 @@ async def Menu(message: types.Message):
         await message.answer("Главное меню \n\n AHS", reply_markup=keyboard_turn_trable)
     else:
         await message.answer("У вас покачто нет доступа к данному боту")
+
+"""
+________________________________________________________________________________________________________________________________________________________________________________
+                                                                                        info USER
+________________________________________________________________________________________________________________________________________________________________________________
+"""
+
+@dp.callback_query_handler(text="info")
+async def Bt5(query: types.CallbackQuery):
+    await bot.answer_callback_query(query.id)
+    await query.message.answer("О боте\n\n"
+                               "Данный бот предназначен для оперативной работы административно-хозяйственной структуры общежития."
+                               "Бот представляет седующие возможности:\n"
+                               "1. Оперативно сообщать о проблемах с сантехникой, электрикой и ключами в меню 'Report'\n"
+                               "2. Смотреть расписание и занимать комнаты общего назначения в меню 'Занять комнату'\n"
+                               "3. Использовать обявления в меню 'Доска объявлений' для поиска потерянных вещей или вещей отдающихся на общее благо\n"
+                               "4. Написать о проблеме на вахту в меню 'Написать вахте' для оперативного решения локальных проблем с жителями общеития или для ответа на вопросы проживающих\n\n"
+                               "Бот 'СППвО общежития' работает на ваше благо!")
+    await Menu(query.message)
 
 
 """
@@ -313,11 +333,10 @@ user_mess_watch_mess = CallbackData("mess_yes", "mess_id")
 async def User_mess_watch_mess(message: types.Message, state: FSMContext):
     await state.update_data(mess=message.message_id)
     data = await state.get_data()
-
     keyboard_end_mess = InlineKeyboardMarkup().row(
         InlineKeyboardButton("да",
                              callback_data=user_mess_watch_mess.new(mess_id=data["mess"])),
-        InlineKeyboardButton("нет", callback_data="mess_no")
+        InlineKeyboardButton("нет", callback_data="menu")
     )
 
     await message.answer(f"Проверте запрос!")
@@ -333,6 +352,60 @@ async def User_mess_watch_mess_yes(query: types.CallbackQuery, callback_data):
     await s.Create_new_request_watch(query.message, int(callback_data['mess_id']))
     await query.message.answer("Запрос отпрввлен")
     await Menu(query.message)
+
+"""
+________________________________________________________________________________________________________________________________________________________________________________
+                                                                                        mess watch at USER
+________________________________________________________________________________________________________________________________________________________________________________
+"""
+
+booking_ans = CallbackData("Boo_ans", "room", "time")
+
+@dp.callback_query_handler(text="booking")
+async def Booking(query: types.CallbackQuery):
+    await bot.answer_callback_query(query.id)
+
+    keyboard_Booking_room = InlineKeyboardMarkup().row(
+        InlineKeyboardButton("Общая комната", callback_data=booking_ans.new(room="OK", time=0))
+    ).row(
+        InlineKeyboardButton("Спортзал", callback_data=booking_ans.new(room="SP", time=0))
+    ).row(
+        InlineKeyboardButton("Прачечная 1 этаж", callback_data=booking_ans.new(room="P1", time=0))
+    ).row(
+        InlineKeyboardButton("Прачечная 2 этаж", callback_data=booking_ans.new(room="P2", time=0))
+    ).row(
+        InlineKeyboardButton("В меню", callback_data="menu")
+    )
+
+    await query.message.answer("Выберите комнату:", reply_markup=keyboard_Booking_room )
+
+@dp.callback_query_handler(booking_ans.filter())
+async def Booking_ans(query: types.CallbackQuery, callback_data):
+    await bot.answer_callback_query(query.id)
+    if int(callback_data["time"]) == 0:
+        keyboard_Booking_room = InlineKeyboardMarkup()
+        ans = await s.Check_all_request_occupy(query.message)
+        ans_time = []
+        for i in ans:
+            if i[2] == callback_data['room']:
+                ans_time.append(i[1].hour)
+
+        for i in range(8, 23, 1):
+            if i in ans_time:
+                pass
+            else:
+                keyboard_Booking_room.insert(
+                    InlineKeyboardButton(f"{i}:00", callback_data=booking_ans.new(room= callback_data["room"], time=i))
+                )
+
+        keyboard_Booking_room.row(
+            InlineKeyboardButton("В меню", callback_data="menu")
+        )
+
+        await query.message.answer("Выберите время:", reply_markup=keyboard_Booking_room)
+    else:
+        await s.New_booking(query.message, callback_data)
+        await query.message.answer("Ждите подтверждения")
 
 """
 ________________________________________________________________________________________________________________________________________________________________________________
@@ -454,35 +527,165 @@ ________________________________________________________________________________
 ________________________________________________________________________________________________________________________________________________________________________________
 """
 
-'''                                                 делать
+
 
 @dp.callback_query_handler(text="requests")
 async def Requestsq(query: types.CallbackQuery):
     await bot.answer_callback_query(query.id)
-    await Requests(query, {"page": -1, "type_r": 1})
+    await Requests(query, {"page": -1, "action": "next", "type_r": 1, "user_id": 0})
 
-request_reply_data = CallbackData("req_ans", "page", "type_r")
+class request_ansver(StatesGroup):
+    ansver = State()
+    type_r = State()
+    id = State
+
+request_reply_data = CallbackData("req_ans", "page", "action", "type_r", "user_id")
+request_reply_booking = CallbackData("req_ans_book", "page", "action", "type_r", "user_id")
 
 @dp.callback_query_handler(request_reply_data.filter())
 async def Requests(query: types.CallbackQuery, callback_data):
-    
+    await bot.answer_callback_query(query.id)
     page = int(callback_data["page"])
     type_r = int(callback_data["type_r"])
-    ans = await s.Request_for_requests(query.message, page, type_r)
+    action = callback_data["action"]
+    if action == "next":
+        ans = await s.Request_for_requests(query.message, page, type_r)
+        #print(callback_data, ans)
+        if ans != []: # запросы закончились
+            if type_r == 1: # Таблица Request_watch
+                await query.message.answer("Вопрос:")
+                await bot.forward_message(chat_id = query.message.chat.id, from_chat_id = int(ans[0][3]), message_id = int(ans[0][1]))
 
-    await query.message.answer("Вопрос:")
-    await bot.forward_message(chat_id = query.message.chat.id, from_chat_id = int(ans[0][3]), message_id = int(ans[0][1]))
+                keyboard_requests = InlineKeyboardMarkup().add(
+                    InlineKeyboardButton("Ответить", callback_data=request_reply_data.new(page= ans[0][0],  action = "ans", type_r = 1, user_id = ans[0][3])),
+                    InlineKeyboardButton("Пропустить", callback_data=request_reply_data.new(page= ans[0][0], action = "next", type_r = 1, user_id = 0))
+                )
 
-    keyboard_requests = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Ответить", callback_data=request_reply_data.new(page= ans[0][0], type_r = )),
-        InlineKeyboardButton("Пропустить", callback_data="req_next")
+                await query.message.answer("Что делать?", reply_markup=keyboard_requests)
+            else: #таблица Request_occupy
+                keyboard_requests = InlineKeyboardMarkup().add(
+                    InlineKeyboardButton("Подтвердить",
+                                         callback_data=request_reply_booking.new(page=ans[0][0], action="yes", type_r=2,
+                                                                              user_id=ans[0][4])),
+                    InlineKeyboardButton("Отказать",
+                                         callback_data=request_reply_booking.new(page=ans[0][0], action="no", type_r=2,
+                                                                              user_id=ans[0][4]))
+                )
+                if ans[0][2] == "OK":
+                    room = "Общая комната"
+                elif ans[0][2] == "SP":
+                    room = "Спортзал"
+                elif ans[0][2] == "P1":
+                    room = "Прачечная 1 этаж"
+                elif ans[0][2] == "P2":
+                    room = "Прачечная 2 этаж"
+                await query.message.answer(f"Запрос бронировании комнаты:\n\n"
+                                           f"Время: {ans[0][1].hour}:00\n"
+                                           f"Комната: {room}\n"
+                                           f"На: 1 час\n\n"
+                                           f"Подтвердить?", reply_markup=keyboard_requests)
+        else:
+            if type_r == 1:
+                await Requests(query, {"page": -1, "action": "next", "type_r": 2, "user_id": 0})
+            else:
+                await query.message.answer("Запросы закончились. Спасибо за работу")
+                await Menu(query.message)
+    else:
+        await query.message.answer(f"Напишите данные цыфры (это важно!): {type_r} {page}")
+        await request_ansver.type_r.set()
+
+@dp.callback_query_handler(request_reply_booking.filter())
+async def Request_reply_booking(query: types.CallbackQuery, callback_data):
+    await bot.answer_callback_query(query.id)
+
+    ans = await s.Update_request_reply_booking(query.message, callback_data)
+    if callback_data["action"] == "yes" and ans != False:
+        if ans[0][2] == "OK":
+            room = "Общая комната"
+        elif ans[0][2] == "SP":
+            room = "Спортзал"
+        elif ans[0][2] == "P1":
+            room = "Прачечная 1 этаж"
+        elif ans[0][2] == "P2":
+            room = "Прачечная 2 этаж"
+        else:
+            room = None
+        await bot.send_message(chat_id=callback_data["user_id"], text=f"Ваш запрос:\n\nвремя бронирования: {ans[0][1]}\nкомната: {room}\nна 1 час\n\nбыл подтвержден.\nПриходите и забирайте ключи.")
+        await query.message.answer("Запрос подтвержден")
+        await Requests(query, {"page": -1, "action": "next", "type_r": 2, "user_id": 0})
+    elif callback_data["action"] == "no" and ans != False:
+        if ans[0][2] == "OK":
+            room = "Общая комната"
+        elif ans[0][2] == "SP":
+            room = "Спортзал"
+        elif ans[0][2] == "P1":
+            room = "Прачечная 1 этаж"
+        elif ans[0][2] == "P2":
+            room = "Прачечная 2 этаж"
+        else:
+            room = None
+        await bot.send_message(chat_id=callback_data["user_id"], text=f"Ваш запрос:\n\n"
+                                                                      f"время бронирования: {ans[0][1]}\n"
+                                                                      f"комната: {room}\n"
+                                                                      f"на 1 час\n\n"
+                                                                      f"был отменен.\n")
+        await query.message.answer("Запрос отвергнут")
+        await Requests(query, {"page": -1, "action": "next", "type_r": 2, "user_id": 0})
+    else:
+        print("error")
+
+
+@dp.message_handler(state=request_ansver.type_r)
+async def Request_ansver_mess(message: types.Message, state: FSMContext):
+    await state.update_data(type_r=(message.text.split(" "))[0])
+    await state.update_data(id=(message.text.split(" "))[1])
+    await message.answer("Теперь напишите ответ пользователю:")
+    await request_ansver.ansver.set()
+
+request_ans = CallbackData("req_ans_watch", "mess_id", "type_r", "id")
+
+@dp.message_handler(state=request_ansver.ansver)
+async def Request_ansver_mess(message: types.Message, state: FSMContext):
+    await state.update_data(ansver=(message.message_id))
+    ansver = await state.get_data()
+    await state.finish()
+    await message.answer("Проверьте ответ")
+    await bot.forward_message(chat_id=message.chat.id, from_chat_id=message.chat.id, message_id=ansver["ansver"])
+
+    keyboard_ans_request = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("Да", callback_data=request_ans.new(mess_id = ansver["ansver"], type_r=ansver["type_r"], id=ansver["id"])),
+        InlineKeyboardButton("Нет", callback_data="requests")
     )
-    
-    await query.message.answer("Что делать?", reply_markup=keyboard_requests)
+
+    await message.answer("Все верно?", reply_markup= keyboard_ans_request)
 
 
+@dp.callback_query_handler(request_ans.filter())
+async def Requests_ansver_mess_ans_user(query: types.CallbackQuery, callback_data):
+    await bot.answer_callback_query(query.id)
+    ansver = int(callback_data["mess_id"])
+    type_r = int(callback_data["type_r"])
+    id = int(callback_data["id"])
 
-'''
+    if type_r == 1:
+        ans = await s.Check_user_id_ans_request_write(query.message, id)
+    else:
+        ans = await s.Check_user_id_ans_Request_occupy(query.message, id)
+    await bot.send_message(chat_id=ans[0], text="На ваш запрос:")
+
+    print(ans[0], query.message.chat.id, int(ans[1]))
+
+    await bot.forward_message(chat_id=ans[0], from_chat_id=ans[0], message_id=int(ans[1]))
+    await bot.send_message(chat_id=ans[0], text="поступил ответ:")
+    await bot.forward_message(chat_id=ans[0], from_chat_id=query.message.chat.id, message_id=ansver)
+
+    #обновить базу данных
+    await s.Update_request(query.message, type_r, id, ansver)
+
+    await query.message.answer("Ответ отправлен")
+    await Requests(query, {"page": -1, "action": "next", "type_r": type_r, "user_id": 0})
+
+
 
 #______________________________________________________________________________________________________
 
@@ -511,7 +714,7 @@ keyboard_end =InlineKeyboardMarkup().row(
 async def Bt2(query: types.CallbackQuery):
     await bot.answer_callback_query(query.id)
     await query.message.answer("Нашел футболку!\n\nЕсли хотите ее вернуть пишите @_pt1chka_ ")
-    photo = open('D:/Code/Prob/TimesKursovaiRabota/Futbolka.jpg', 'rb')
+    photo = open('D:/code/тсарые боты/TimesKursovaiRabota/Futbolka.jpg', 'rb')
     await bot.send_photo(query.message.chat.id, photo=photo)
     photo.close()
     await query.message.answer("Действия", reply_markup=keyboard_end)
@@ -591,18 +794,7 @@ async def Bt4_mess(message: types.Message, state: FSMContext):
 
 #______________________________________________________________________________________________________
 
-@dp.callback_query_handler(text="bt5")
-async def Bt5(query: types.CallbackQuery):
-    await bot.answer_callback_query(query.id)
-    await query.message.answer("О боте\n\n"
-                               "Данный бот предназначен для оперативной работы административно-хозяйственной структуры общежития."
-                               "Бот представляет седующие возможности:\n"
-                               "1. Оперативно сообщать о проблемах с сантехникой, электрикой и ключами в меню 'Report'\n"
-                               "2. Смотреть расписание и занимать комнаты общего назначения в меню 'Занять комнату'\n"
-                               "3. Использовать обявления в меню 'Доска потеряшек' для поиска потерянных вещей или вещей отдающихся на общее благо\n"
-                               "4. Написать о проблеме на вахту в меню 'Написать вахте' для оперативного решения локальных проблем с жителями общеития или для ответа на вопросы проживающих\n\n"
-                               "Бот 'СБДРПО общежития' работает на ваше благо!")
-    await Menu(query.message)
+
 
 #______________________________________________________________________________________________________
 #______________________________________________________________________________________________________
@@ -733,9 +925,11 @@ async def End_zan2(query: types.CallbackQuery):
     global trabls
     trabls["zan2"] = False
     await Btw2_menu(query.message)
+"""
 
 class post(StatesGroup):
     st1 = State()
+
 
 @dp.callback_query_handler(text="btw4")
 async def Btw4(query: types.CallbackQuery):
@@ -759,7 +953,7 @@ async def Post(message: types.Message, state: FSMContext):
 async def Yes_post(query: types.CallbackQuery):
     await bot.answer_callback_query(query.id)
     await query.message.answer("Пост опубликован")
-    await Menu_watch(query.message)
+    await Menu(query.message)
 
 # ______________________________________________________________________________________________________
 
@@ -785,19 +979,20 @@ async def Btw3(query: types.CallbackQuery):
     else:
         keyboard_Board_watch.row(
             InlineKeyboardButton("Создать объявление", callback_data="new_add_watch"),
-            InlineKeyboardButton("В меню", callback_data="menu_watch")
+            InlineKeyboardButton("В меню", callback_data="menu")
         )
     await query.message.answer("Доска объявлений\n\nЗдесь можно найти то, что вы ищите или оставить свои объявления", reply_markup=keyboard_Board_watch)
 
 keyboard_end_watch =InlineKeyboardMarkup().row(
-    MM, InlineKeyboardButton("Удалить запись", callback_data = "del_watch")
+    InlineKeyboardButton("В меню", callback_data = "menu"),
+    InlineKeyboardButton("Удалить запись", callback_data = "del_watch")
 )
 
 @dp.callback_query_handler(text="bt2_futbolka_watch")
 async def Btw3_watch(query: types.CallbackQuery):
     await bot.answer_callback_query(query.id)
     await query.message.answer("Нашел футболку!\n\nЕсли хотите ее вернуть пишите @_pt1chka_ ")
-    photo = open('D:/Code/Prob/TimesKursovaiRabota/Futbolka.jpg', 'rb')
+    photo = open('D:/code/тсарые боты/TimesKursovaiRabota/Futbolka.jpg', 'rb')
     await bot.send_photo(query.message.chat.id, photo=photo)
     photo.close()
     await query.message.answer("Действия", reply_markup=keyboard_end_watch)
@@ -811,7 +1006,7 @@ async def Del_watch(query: types.CallbackQuery):
 
     await query.message.answer("Запись удалена")
     await Menu_watch(query.message)
-"""
+
 # ______________________________________________________________________________________________________
 
 #старт бота
